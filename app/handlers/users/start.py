@@ -3,6 +3,7 @@ from aiogram import Router
 from aiogram.filters.command import CommandStart, CommandObject
 from database.crud import get_or_create_user, get_movie_by_code, get_episode_by_code, get_seasons_for_movie
 from app.utils.subscription import check_user_subscriptions
+from app.utils.bot_info import get_bot_username
 from app.keyboards.inline.channels import channels_check_keyboard
 from app.keyboards.default.menu import main_menu_keyboard
 from app.keyboards.inline.series import seasons_keyboard
@@ -37,15 +38,15 @@ async def start_handler(message: Message, command: CommandObject):
     code = command.args
     if code:
         code = code.strip()
-        bot_info = await message.bot.get_me()
-        bot_username = f"@{bot_info.username}" if bot_info.username else "@siuuu7bot"
+        bot_username = await get_bot_username(message.bot)
         movie = await get_movie_by_code(code)
         if movie:
             if movie.media_type == "movie" and movie.file_id:
                 caption = f"🎬 <b>{movie.title}</b>\n🔑 Kod: <code>{movie.code}</code>"
                 if movie.description:
                     caption += f"\n\n📝 {movie.description}"
-                caption += f"\n\n🤖 <b>Bizning bot:</b> {bot_username}"
+                if bot_username:
+                    caption += f"\n\n🤖 <b>Bizning bot:</b> {bot_username}"
                 await message.answer_video(video=movie.file_id, caption=caption)
                 return
             elif movie.media_type == "series":
@@ -62,7 +63,8 @@ async def start_handler(message: Message, command: CommandObject):
         if episode:
             caption = f"📺 <b>{episode.movie.title}</b>\n" \
                       f"📁 {episode.season}-Fasl, ▶️ {episode.episode}-qism"
-            caption += f"\n\n🤖 <b>Bizning bot:</b> {bot_username}"
+            if bot_username:
+                caption += f"\n\n🤖 <b>Bizning bot:</b> {bot_username}"
             await message.answer_video(video=episode.file_id, caption=caption)
             return
 

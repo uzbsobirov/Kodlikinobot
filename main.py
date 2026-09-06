@@ -8,7 +8,7 @@ from aiogram.enums import ParseMode
 from aiogram import Bot, Dispatcher
 
 from database.base import create_tables
-from database.crud import init_admins_from_env_and_db
+from database.crud import init_admins_from_env_and_db, get_pro_price
 from app import handlers
 from middlewares import setup_middlewares
 from app.utils.notify_admins import notify_admins
@@ -29,13 +29,28 @@ async def main():
         return
 
     bot = Bot(token=config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    storage = MemoryStorage()
+
+    if config.REDIS_URL:
+        from aiogram.fsm.storage.redis import RedisStorage
+        storage = RedisStorage.from_url(config.REDIS_URL)
+        logger.info("FSM holatlari uchun RedisStorage ishlatilmoqda.")
+    else:
+        storage = MemoryStorage()
+        logger.warning(
+            "REDIS_URL sozlanmagan — FSM holatlari MemoryStorage'da (jarayon xotirasida) saqlanmoqda. "
+            "Bot qayta ishga tushsa (deploy, xatolik, server restart), foydalanuvchilarning joriy "
+            "jarayoni (masalan, to'lov chekini kutish yoki admin kino qo'shish jarayoni) yo'qoladi. "
+            "Production uchun .env faylida REDIS_URL ni sozlash tavsiya etiladi."
+        )
     dp = Dispatcher(storage=storage)
 
     # 1. Ma'lumotlar bazasi jadvallarini tekshirish va yaratish
     try:
         await create_tables()
         await init_admins_from_env_and_db()
+        # `settings` qatorini oldindan yaratib qo'yamiz — shunda birinchi so'rovlar
+        # bir vaqtda kelsa ham "topilmasa yarat" poyga holati yuzaga kelmaydi
+        await get_pro_price()
     except Exception as e:
         logger.error(f"Ma'lumotlar bazasiga ulanishda xatolik: {e}")
         logger.warning("Bot bazasiz to'liq ishlay olmasligi mumkin. .env faylida DB_URL ni tekshiring.")

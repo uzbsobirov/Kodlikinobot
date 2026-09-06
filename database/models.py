@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import BigInteger, String, Text, Boolean, DateTime, ForeignKey, func
+from sqlalchemy import BigInteger, String, Text, Boolean, DateTime, ForeignKey, CheckConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database.base import Base
 
@@ -94,8 +94,10 @@ class Channel(Base):
 
 class Setting(Base):
     __tablename__ = "settings"
+    # Jadvalda faqat bitta (id=1) qator bo'lishi kafolatlanadi (race condition oldini olish uchun)
+    __table_args__ = (CheckConstraint("id = 1", name="ck_settings_singleton"),)
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     pro_price_month: Mapped[int] = mapped_column(BigInteger, default=15000, nullable=False)
 
     def __repr__(self) -> str:

@@ -1,6 +1,7 @@
 import asyncio
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram import Router, F
+from aiogram import Router, F, Bot
+from aiogram.exceptions import TelegramRetryAfter, TelegramForbiddenError
 from aiogram.fsm.context import FSMContext
 from data.config import ADMINS
 from database.crud import get_all_user_ids
@@ -154,6 +155,17 @@ async def show_broadcast_preview(user_id: int, bot, state: FSMContext):
 
     await state.update_data(preview_msg_ids=[msg1.message_id, msg2.message_id, msg3.message_id])
     await state.set_state(AdminBroadcastState.waiting_for_confirm)
+
+async def _send_broadcast_message(
+    bot: Bot, chat_id: int, send_mode: str, from_chat_id: int, message_id: int,
+    markup: InlineKeyboardMarkup | None
+) -> None:
+    if send_mode == "forward":
+        await bot.forward_message(chat_id=chat_id, from_chat_id=from_chat_id, message_id=message_id)
+    else:
+        await bot.copy_message(
+            chat_id=chat_id, from_chat_id=from_chat_id, message_id=message_id, reply_markup=markup
+        )
 
 @router.message(AdminBroadcastState.waiting_for_message)
 async def process_broadcast_message(message: Message, state: FSMContext):
@@ -330,23 +342,22 @@ async def confirm_broadcast_callback(call: CallbackQuery, state: FSMContext):
 
     for uid in user_ids:
         try:
-            if send_mode == "forward":
-                await call.bot.forward_message(
-                    chat_id=uid,
-                    from_chat_id=from_chat_id,
-                    message_id=message_id
-                )
-            else:
-                await call.bot.copy_message(
-                    chat_id=uid,
-                    from_chat_id=from_chat_id,
-                    message_id=message_id,
-                    reply_markup=markup
-                )
+            await _send_broadcast_message(call.bot, uid, send_mode, from_chat_id, message_id, markup)
             success += 1
-            await asyncio.sleep(0.04)
+        except TelegramRetryAfter as e:
+            # Telegram flood-limit qo'ygan — ko'rsatilgan soniya kutib, shu foydalanuvchiga bir marta qayta urinamiz
+            await asyncio.sleep(e.retry_after)
+            try:
+                await _send_broadcast_message(call.bot, uid, send_mode, from_chat_id, message_id, markup)
+                success += 1
+            except Exception:
+                failed += 1
+        except TelegramForbiddenError:
+            # Bot bloklangan yoki chiqarib yuborilgan — qayta urinish shart emas
+            failed += 1
         except Exception:
             failed += 1
+        await asyncio.sleep(0.04)
 
     await call.bot.send_message(
         chat_id=call.from_user.id,

@@ -1,5 +1,6 @@
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
+from aiogram.types import CallbackQuery
 from database.crud import get_all_channels, get_user
 from data.config import ADMINS
 import logging
@@ -38,3 +39,34 @@ async def check_user_subscriptions(bot: Bot, user_id: int) -> tuple[bool, list]:
     if unsubscribed_channels:
         return False, unsubscribed_channels
     return True, []
+
+
+async def ensure_subscribed_or_prompt(call: CallbackQuery) -> bool:
+    """
+    Callback query orqali (masalan, fasl/qism tanlash tugmalari bosilganda)
+    foydalanuvchining majburiy kanallarga hali ham a'zoligini tekshiradi.
+
+    Foydalanuvchi kanaldan chiqib ketgan bo'lsa, eski xabardagi tugmalar orqali
+    video/qismlarni yuklab olishning oldini olish uchun ishlatiladi — obunani
+    faqat matn bilan qidiruvda emas, callbacklarda ham tekshirish kerak.
+
+    Qaytaradi: True — foydalanuvchi a'zo (davom etish mumkin),
+               False — a'zo emas (ogohlantirib, qayta obuna klaviaturasi yuborildi).
+    """
+    # Import shu yerda qilinadi — aylanma import (circular import)ning oldini olish uchun
+    from app.keyboards.inline.channels import channels_check_keyboard
+
+    is_sub, unsub_channels = await check_user_subscriptions(call.bot, call.from_user.id)
+    if is_sub:
+        return True
+
+    await call.answer(
+        "⚠️ Botdan foydalanish uchun avval homiy kanallarga a'zo bo'lishingiz kerak!",
+        show_alert=True
+    )
+    prompt_text = "⚠️ <b>Botdan foydalanish uchun homiy kanallarga qayta a'zo bo'ling:</b>"
+    try:
+        await call.message.edit_text(text=prompt_text, reply_markup=channels_check_keyboard(unsub_channels))
+    except Exception:
+        await call.message.answer(text=prompt_text, reply_markup=channels_check_keyboard(unsub_channels))
+    return False

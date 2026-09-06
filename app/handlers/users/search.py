@@ -7,10 +7,12 @@ from database.crud import (
 )
 from database.models import Episode
 from app.state.states import MovieSearchState
-from app.utils.subscription import check_user_subscriptions
+from app.utils.subscription import check_user_subscriptions, ensure_subscribed_or_prompt
+from app.utils.bot_info import get_bot_username
 from app.keyboards.inline.channels import channels_check_keyboard
 from app.keyboards.inline.series import seasons_keyboard, episodes_keyboard
 from app.keyboards.default.menu import cancel_keyboard, main_menu_keyboard, admin_menu_keyboard
+from app.keyboards.texts import ALL_MENU_BUTTONS
 from data.config import ADMINS
 from sqlalchemy import select
 
@@ -47,15 +49,10 @@ async def cancel_search_handler(message: Message, state: FSMContext):
 @router.message(F.text, ~F.text.startswith("/"))
 async def handle_movie_code_input(message: Message, state: FSMContext):
     text = message.text.strip()
-    
+
     # Asosiy va admin tugmalar bosilgan bo'lsa bu handler ishlamaydi
-    ignored_buttons = [
-        "🔍 Kino qidirish", "👤 Shaxsiy kabinet", "⭐ PRO Obuna", "⚙️ Admin Panel", "❌ Bekor qilish",
-        "🎬 Kino qo'shish", "📺 Serial qismi qo'shish", "🗑 Kino/Serial o'chirish", "📊 Statistika",
-        "💳 Kartalar boshqaruvi", "💰 PRO narxini sozlash", "📢 Majburiy kanallar", "✉️ Xabar tarqatish",
-        "👥 Adminlar boshqaruvi", "🔙 Asosiy menyu"
-    ]
-    if text in ignored_buttons:
+    # (ro'yxat app/keyboards/texts.py dan olinadi — klaviaturalar bilan sinxron turishi uchun)
+    if text in ALL_MENU_BUTTONS:
         return
 
     user_id = message.from_user.id
@@ -74,12 +71,12 @@ async def handle_movie_code_input(message: Message, state: FSMContext):
         await state.clear()
         is_admin = user_id in ADMINS
         if movie.media_type == "movie" and movie.file_id:
-            bot_info = await message.bot.get_me()
-            bot_username = f"@{bot_info.username}" if bot_info.username else "@siuuu7bot"
+            bot_username = await get_bot_username(message.bot)
             caption = f"🎬 <b>{movie.title}</b>\n🔑 Kod: <code>{movie.code}</code>"
             if movie.description:
                 caption += f"\n\n📝 {movie.description}"
-            caption += f"\n\n🤖 <b>Bizning bot:</b> {bot_username}"
+            if bot_username:
+                caption += f"\n\n🤖 <b>Bizning bot:</b> {bot_username}"
             await message.answer_video(
                 video=movie.file_id,
                 caption=caption,
@@ -109,11 +106,11 @@ async def handle_movie_code_input(message: Message, state: FSMContext):
     if episode:
         await state.clear()
         is_admin = user_id in ADMINS
-        bot_info = await message.bot.get_me()
-        bot_username = f"@{bot_info.username}" if bot_info.username else "@siuuu7bot"
+        bot_username = await get_bot_username(message.bot)
         caption = f"📺 <b>{episode.movie.title}</b>\n" \
                   f"📁 {episode.season}-Fasl, ▶️ {episode.episode}-qism"
-        caption += f"\n\n🤖 <b>Bizning bot:</b> {bot_username}"
+        if bot_username:
+            caption += f"\n\n🤖 <b>Bizning bot:</b> {bot_username}"
         await message.answer_video(
             video=episode.file_id,
             caption=caption,
@@ -130,6 +127,9 @@ async def handle_movie_code_input(message: Message, state: FSMContext):
 # Serial faslini tanlash callback handler
 @router.callback_query(F.data.startswith("season:"))
 async def season_select_callback(call: CallbackQuery):
+    if not await ensure_subscribed_or_prompt(call):
+        return
+
     _, movie_id_str, season_str = call.data.split(":")
     movie_id = int(movie_id_str)
     season = int(season_str)
@@ -154,6 +154,9 @@ async def season_select_callback(call: CallbackQuery):
 # Qismni tanlash va videoni yuborish callback handler
 @router.callback_query(F.data.startswith("episode:"))
 async def episode_select_callback(call: CallbackQuery):
+    if not await ensure_subscribed_or_prompt(call):
+        return
+
     _, episode_id_str = call.data.split(":")
     episode_id = int(episode_id_str)
 
@@ -170,12 +173,12 @@ async def episode_select_callback(call: CallbackQuery):
     movie = await get_movie_by_id(episode.movie_id)
     title = movie.title if movie else "Serial"
 
-    bot_info = await call.bot.get_me()
-    bot_username = f"@{bot_info.username}" if bot_info.username else "@siuuu7bot"
+    bot_username = await get_bot_username(call.bot)
     caption = f"📺 <b>{title}</b>\n" \
               f"📁 {episode.season}-Fasl, ▶️ {episode.episode}-qism"
-    caption += f"\n\n🤖 <b>Bizning bot:</b> {bot_username}"
-    
+    if bot_username:
+        caption += f"\n\n🤖 <b>Bizning bot:</b> {bot_username}"
+
     await call.answer()
     await call.bot.send_video(
         chat_id=call.from_user.id,
@@ -186,6 +189,9 @@ async def episode_select_callback(call: CallbackQuery):
 # Fasllar ro'yxatiga qaytish callback handler
 @router.callback_query(F.data.startswith("back_to_seasons:"))
 async def back_to_seasons_callback(call: CallbackQuery):
+    if not await ensure_subscribed_or_prompt(call):
+        return
+
     _, movie_id_str = call.data.split(":")
     movie_id = int(movie_id_str)
 

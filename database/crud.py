@@ -1,10 +1,14 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
 from sqlalchemy import select, update, delete, func, distinct
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from database.base import async_session
 from database.models import User, Movie, Episode, Payment, Card, Channel, Setting, Admin
 from data.config import sync_admins, ENV_ADMINS
+
+# `settings` jadvalida yagona (id=1) qator kafolatlangan bo'lishi kerak
+SETTINGS_ROW_ID = 1
 
 # ==================== USERS ====================
 
@@ -197,16 +201,27 @@ async def get_payment(payment_id: int) -> Optional[Payment]:
         result = await session.execute(select(Payment).where(Payment.id == payment_id))
         return result.scalar_one_or_none()
 
-async def update_payment_status(payment_id: int, status: str) -> Optional[Payment]:
+async def update_payment_status(payment_id: int, new_status: str, expected_status: str = "kutilmoqda") -> bool:
+    """
+    To'lov holatini atomik ravishda yangilaydi: faqat holat `expected_status`
+    bo'lgandagina yangilanadi (bitta SQL UPDATE...WHERE ichida).
+
+    Bu ikki admin bir vaqtda "Tasdiqlash"/"Bekor qilish" tugmasini bossa yuzaga
+    keladigan race condition'ning oldini oladi — avval "select, keyin tekshirib,
+    keyin yangilash" (check-then-act) yondashuvi atomik emas edi va ikkala admin
+    ham eski holatni ko'rib, ikkalasi ham PRO status bera olardi.
+
+    Qaytaradi: True — agar shu chaqiruv holatni haqiqatan ham o'zgartira olgan
+    bo'lsa; False — agar to'lov allaqachon boshqa holatga o'tkazilgan bo'lsa.
+    """
     async with async_session() as session:
-        result = await session.execute(select(Payment).where(Payment.id == payment_id))
-        payment = result.scalar_one_or_none()
-        if payment:
-            payment.status = status
-            await session.commit()
-            await session.refresh(payment)
-            return payment
-        return None
+        result = await session.execute(
+            update(Payment)
+            .where(Payment.id == payment_id, Payment.status == expected_status)
+            .values(status=new_status)
+        )
+        await session.commit()
+        return result.rowcount > 0
 
 async def get_total_revenue() -> int:
     """Tasdiqlangan to'lovlardan tushgan umumiy summa (so'mda)"""
@@ -318,26 +333,42 @@ async def delete_channel(channel_id: int) -> bool:
 
 async def get_pro_price() -> int:
     async with async_session() as session:
-        result = await session.execute(select(Setting))
-        setting = result.scalar_one_or_none()
-        if not setting:
-            setting = Setting(pro_price_month=15000)
-            session.add(setting)
+        setting = await session.get(Setting, SETTINGS_ROW_ID)
+        if setting:
+            return setting.pro_price_month
+
+        # id=1 bilan qat'iy bog'lab qo'yamiz — shu tufayli ikkita so'rov bir
+        # vaqtda "topilmadi" holatiga tushib qolsa ham, faqat bittasi qator
+        # yarata oladi (PRIMARY KEY constraint ikkinchisini bloklaydi), va
+        # `select(Setting)` + `scalar_one_or_none()` hech qachon
+        # MultipleResultsFound bilan yiqilmaydi.
+        setting = Setting(id=SETTINGS_ROW_ID, pro_price_month=15000)
+        session.add(setting)
+        try:
             await session.commit()
-            await session.refresh(setting)
+        except IntegrityError:
+            await session.rollback()
+            setting = await session.get(Setting, SETTINGS_ROW_ID)
         return setting.pro_price_month
 
 async def set_pro_price(new_price: int) -> int:
     async with async_session() as session:
-        result = await session.execute(select(Setting))
-        setting = result.scalar_one_or_none()
-        if not setting:
-            setting = Setting(pro_price_month=new_price)
-            session.add(setting)
-        else:
+        setting = await session.get(Setting, SETTINGS_ROW_ID)
+        if setting:
             setting.pro_price_month = new_price
-        await session.commit()
-        return setting.pro_price_month
+            await session.commit()
+            return new_price
+
+        setting = Setting(id=SETTINGS_ROW_ID, pro_price_month=new_price)
+        session.add(setting)
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            setting = await session.get(Setting, SETTINGS_ROW_ID)
+            setting.pro_price_month = new_price
+            await session.commit()
+        return new_price
 
 
 # ==================== ADMINS ====================

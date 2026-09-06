@@ -1,5 +1,5 @@
 from aiogram import Dispatcher
-from app.handlers import admin, users, groups, channels
+from app.handlers import admin, users
 
 def setup(dp: Dispatcher):
     """

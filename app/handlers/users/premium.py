@@ -178,13 +178,15 @@ async def approve_payment_callback(call: CallbackQuery):
         await call.answer("To'lov topilmadi.", show_alert=True)
         return
 
-    if payment.status != "kutilmoqda":
-        await call.answer(f"Bu to'lov avval ko'rib chiqilgan ({payment.status})!", show_alert=True)
+    # Atomik yangilash: agar boshqa admin buni allaqachon ko'rib chiqqan bo'lsa
+    # (race condition), rowcount 0 qaytaradi va foydalanuvchiga ikki marta PRO berilmaydi
+    locked = await update_payment_status(payment_id, "tasdiqlandi")
+    if not locked:
+        await call.answer("Bu to'lov allaqachon ko'rib chiqilgan!", show_alert=True)
         return
 
     # Foydalanuvchiga 30 kun PRO status berish
     user = await set_premium(telegram_id=target_user_id, days=30)
-    await update_payment_status(payment_id, "tasdiqlandi")
 
     expire_str = user.premium_expire_date.strftime("%d.%m.%Y") if user and user.premium_expire_date else "30 kun"
 
@@ -222,11 +224,10 @@ async def reject_payment_callback(call: CallbackQuery):
         await call.answer("To'lov topilmadi.", show_alert=True)
         return
 
-    if payment.status != "kutilmoqda":
-        await call.answer(f"Bu to'lov avval ko'rib chiqilgan ({payment.status})!", show_alert=True)
+    locked = await update_payment_status(payment_id, "bekor_qilindi")
+    if not locked:
+        await call.answer("Bu to'lov allaqachon ko'rib chiqilgan!", show_alert=True)
         return
-
-    await update_payment_status(payment_id, "bekor_qilindi")
 
     await call.message.edit_caption(
         caption=call.message.caption + f"\n\n❌ <b>Admin tomonidan BEKOR QILINDI ({call.from_user.first_name})</b>",

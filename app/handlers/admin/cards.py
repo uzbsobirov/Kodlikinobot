@@ -149,8 +149,8 @@ async def process_card_number(message: Message, state: FSMContext):
 
     raw_text = message.text.strip()
     clean_digits = "".join(filter(str.isdigit, raw_text))
-    if len(clean_digits) < 8:
-        await message.answer("⚠️ Iltimos, to'g'ri karta raqamini kiriting (kamida 8-16 ta raqam):")
+    if len(clean_digits) != 16:
+        await message.answer("⚠️ Iltimos, to'g'ri karta raqamini kiriting (Uzcard/Humo — 16 ta raqam):")
         return
 
     formatted_card = format_card_number(raw_text)
