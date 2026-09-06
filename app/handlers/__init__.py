@@ -1,9 +1,9 @@
 from aiogram import Dispatcher
-
-from app.handlers import users, groups, channels
+from app.handlers import admin, users, groups, channels
 
 def setup(dp: Dispatcher):
     """
     Botning routerlarini sozlash uchun setup funksiyasi.
     """
-    users.setup(dp)  # Foydalanuvchi bilan bog'liq handlerlarni ulash
+    admin.setup(dp)  # Admin paneli handlerlari
+    users.setup(dp)  # Foydalanuvchi bilan bog'liq handlerlar

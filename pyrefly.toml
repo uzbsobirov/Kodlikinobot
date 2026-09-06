@@ -1,0 +1,3 @@
+python-interpreter-path = ".venv/Scripts/python.exe"
+search-paths = [".", ".venv/Lib/site-packages"]
+check-unannotated-defs = false

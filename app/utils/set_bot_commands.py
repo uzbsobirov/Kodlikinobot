@@ -6,7 +6,8 @@ async def set_bot_commands(bot: Bot):
     Bot uchun komandalarni sozlash
     """
     commands = [
-        BotCommand(command="start", description="Start the bot"),
-        BotCommand(command="help", description="Show help")
+        BotCommand(command="start", description="Botni qayta ishga tushirish"),
+        BotCommand(command="help", description="Yordam va qo'llanma"),
+        BotCommand(command="admin", description="Admin paneli (Faqat adminlar uchun)")
     ]
     await bot.set_my_commands(commands=commands)

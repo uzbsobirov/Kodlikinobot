@@ -1,17 +1,15 @@
+import time
+import logging
+from typing import Callable, Dict, Any
 from aiogram import BaseMiddleware
 from aiogram.types import Message
-from aiogram.dispatcher.flags import get_flag
-from async_throttle import Throttle
-from typing import Callable, Dict, Any
-import logging
 
 logger = logging.getLogger(__name__)
 
 class ThrottlingMiddleware(BaseMiddleware):
-    def __init__(self, rate_limit: float = 1.0, prefix: str = "antiflood_"):
-        self.default_limit = rate_limit
-        self.prefix = prefix
-        self.throttler = Throttle()
+    def __init__(self, rate_limit: float = 0.6):
+        self.rate_limit = rate_limit
+        self.users: Dict[int, float] = {}
         super().__init__()
 
     async def __call__(
@@ -24,13 +22,13 @@ class ThrottlingMiddleware(BaseMiddleware):
         if not user:
             return await handler(event, data)
 
-        # Individual handler uchun limitni olamiz (flags orqali)
-        limit = get_flag(data, "throttling_rate_limit") or self.default_limit
-        key = f"{self.prefix}{user.id}"
+        now = time.time()
+        last_time = self.users.get(user.id, 0)
 
-        try:
-            async with self.throttler(key, rate=limit):
-                return await handler(event, data)
-        except Exception:
-            logger.warning(f"⛔️ Throttled: {user.id} - too many requests")
+        if now - last_time < self.rate_limit:
+            logger.warning(f"⛔️ Throttled: user {user.id} - too fast")
             await event.answer("🚫 Juda ko‘p so‘rov yuborildi. Iltimos, biroz kuting.")
+            return
+
+        self.users[user.id] = now
+        return await handler(event, data)
