@@ -23,15 +23,7 @@ logger = logging.getLogger(__name__)
 
 router = Router()
 
-@router.message(StateFilter(AdminManageState), F.text.in_(["❌ Bekor qilish", "🔙 Asosiy menyu"]))
-async def admin_manage_cancel_handler(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    await state.clear()
-    if message.text == "🔙 Asosiy menyu":
-        await message.answer("🏠 Asosiy menyuga qaytdingiz.", reply_markup=main_menu_keyboard(is_admin=True))
-    else:
-        await message.answer("❌ Jarayon bekor qilindi.", reply_markup=admin_menu_keyboard())
+
 
 async def send_admins_list(user_id: int, bot):
     admins = await get_all_admins()

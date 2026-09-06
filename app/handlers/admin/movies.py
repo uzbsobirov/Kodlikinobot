@@ -15,17 +15,7 @@ router = Router()
 def is_admin(user_id: int) -> bool:
     return user_id in ADMINS
 
-@router.message(StateFilter("*"), F.text.in_(["❌ Bekor qilish", "🔙 Asosiy menyu"]))
-async def admin_movie_cancel_handler(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    current_state = await state.get_state()
-    if current_state:
-        await state.clear()
-        if message.text == "🔙 Asosiy menyu":
-            await message.answer("🏠 Asosiy menyuga qaytdingiz.", reply_markup=main_menu_keyboard(is_admin=True))
-        else:
-            await message.answer("❌ Jarayon bekor qilindi.", reply_markup=admin_menu_keyboard())
+
 
 # Kino yoki Serial qo'shish
 async def send_add_movie_menu(user_id: int, bot):

@@ -16,17 +16,22 @@ router = Router()
 def is_admin(user_id: int) -> bool:
     return user_id in ADMINS
 
-@router.message(StateFilter("*"), F.text.in_(["❌ Bekor qilish", "🔙 Asosiy menyu"]))
-async def admin_panel_cancel_handler(message: Message, state: FSMContext):
+@router.message(StateFilter("*"), F.text == "🔙 Asosiy menyu")
+async def back_to_main_menu(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    current_state = await state.get_state()
-    if current_state:
-        await state.clear()
-        if message.text == "🔙 Asosiy menyu":
-            await message.answer("🏠 Asosiy menyuga qaytdingiz.", reply_markup=main_menu_keyboard(is_admin=True))
-        else:
-            await message.answer("❌ Jarayon bekor qilindi.", reply_markup=admin_menu_keyboard())
+    await state.clear()
+    await message.answer(
+        text="🏠 <b>Asosiy menyuga qaytdingiz.</b>",
+        reply_markup=main_menu_keyboard(is_admin=True)
+    )
+
+@router.message(StateFilter("*"), F.text == "❌ Bekor qilish")
+async def admin_cancel_handler(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    await state.clear()
+    await message.answer("❌ Jarayon bekor qilindi.", reply_markup=admin_menu_keyboard())
 
 @router.message(F.text == "⚙️ Admin Panel")
 @router.message(F.text == "/admin")
@@ -42,16 +47,6 @@ async def open_admin_panel(message: Message, state: FSMContext = None):
         "Quyidagi bo'limlardan birini tanlang:"
     )
     await message.answer(text=text, reply_markup=admin_menu_keyboard())
-
-@router.message(F.text == "🔙 Asosiy menyu")
-async def back_to_main_menu(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    await state.clear()
-    await message.answer(
-        text="🏠 <b>Asosiy menyuga qaytdingiz.</b>",
-        reply_markup=main_menu_keyboard(is_admin=True)
-    )
 
 @router.callback_query(F.data == "admin_back")
 async def admin_back_callback(call: CallbackQuery, state: FSMContext):
