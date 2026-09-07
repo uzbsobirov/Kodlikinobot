@@ -235,21 +235,25 @@ async def process_channel_input(message: Message, state: FSMContext):
     channel_id = chat.id
     channel_name = chat.title or "Kanal"
 
-    # Havolani (link) avtomatik olish
+    # Havolani (link) avtomatik olish — avval "so'rov orqali qo'shilish"
+    # (join request) havolasini yaratishga harakat qilamiz, shunda bot
+    # so'rovlarni avtomatik tasdiqlay oladi. Bunga huquq yetmasa
+    # (masalan bot "Foydalanuvchi qo'shish" huquqiga ega bo'lmasa),
+    # oddiy ochiq havolaga qaytamiz.
     invite_link = None
-    if chat.username:
-        invite_link = f"https://t.me/{chat.username}"
-    elif chat.invite_link:
-        invite_link = chat.invite_link
-    else:
-        try:
-            created_link = await message.bot.create_chat_invite_link(
-                chat_id=channel_id,
-                name="Kodlikino Majburiy Obuna"
-            )
-            invite_link = created_link.invite_link
-        except Exception as err:
-            logger.warning(f"Avtomatik havola olinmadi: {err}")
+    try:
+        created_link = await message.bot.create_chat_invite_link(
+            chat_id=channel_id,
+            name="Kodlikino Majburiy Obuna",
+            creates_join_request=True
+        )
+        invite_link = created_link.invite_link
+    except Exception as err:
+        logger.warning(f"So'rov orqali qo'shilish havolasi yaratilmadi: {err}")
+        if chat.username:
+            invite_link = f"https://t.me/{chat.username}"
+        elif chat.invite_link:
+            invite_link = chat.invite_link
 
     # Agar havola baribir olinmasa, qo'lda so'raymiz (fallback)
     if not invite_link:
