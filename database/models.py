@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import BigInteger, String, Text, Boolean, DateTime, ForeignKey, CheckConstraint, func
+from sqlalchemy import BigInteger, String, Text, Boolean, DateTime, ForeignKey, CheckConstraint, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database.base import Base
 
@@ -95,6 +95,27 @@ class Channel(Base):
 
     def __repr__(self) -> str:
         return f"<Channel id={self.id} channel_id={self.channel_id} name={self.name} type={self.channel_type}>"
+
+
+class ChannelMembership(Base):
+    """
+    Katta (ko'p obunachili) kanallarda Telegram get_chat_member() orqali
+    ixtiyoriy foydalanuvchining a'zoligini so'rab bo'lmaydi (Bot API
+    "member list is inaccessible" xatoligini qaytaradi). Shuning uchun
+    a'zolik holatini chat_member yangilanishlaridan kuzatib, shu yerda
+    saqlab boramiz — bu kanal hajmidan qat'i nazar ishlaydi.
+    """
+    __tablename__ = "channel_memberships"
+    __table_args__ = (UniqueConstraint("channel_id", "user_id", name="uq_channel_membership"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    channel_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ChannelMembership channel_id={self.channel_id} user_id={self.user_id} status={self.status}>"
 
 
 class Setting(Base):

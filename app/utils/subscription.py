@@ -1,7 +1,7 @@
 from aiogram import Bot
 from aiogram.enums import ChatMemberStatus
 from aiogram.types import CallbackQuery
-from database.crud import get_all_channels, get_user
+from database.crud import get_all_channels, get_user, get_channel_membership_status
 from data.config import ADMINS
 import logging
 
@@ -32,6 +32,16 @@ async def check_user_subscriptions(bot: Bot, user_id: int) -> tuple[bool, list]:
     for channel in channels:
         if channel.channel_type != "telegram":
             unverifiable_channels.append(channel)
+            continue
+
+        # Avval chat_member yangilanishlaridan kuzatilgan holatga qaraymiz —
+        # katta kanallarda get_chat_member() ixtiyoriy foydalanuvchini
+        # tekshirishni rad etadi ("member list is inaccessible"), shuning
+        # uchun bu usul kanal hajmidan qat'i nazar ishonchli ishlaydi.
+        tracked_status = await get_channel_membership_status(channel.channel_id, user_id)
+        if tracked_status is not None:
+            if tracked_status in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED]:
+                unsubscribed_channels.append(channel)
             continue
 
         try:

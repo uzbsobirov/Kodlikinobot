@@ -4,7 +4,7 @@ from sqlalchemy import select, update, delete, func, distinct
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 from database.base import async_session
-from database.models import User, Movie, Episode, Payment, Card, Channel, Setting, Admin
+from database.models import User, Movie, Episode, Payment, Card, Channel, ChannelMembership, Setting, Admin
 from data.config import sync_admins, ENV_ADMINS
 
 # `settings` jadvalida yagona (id=1) qator kafolatlangan bo'lishi kerak
@@ -344,6 +344,35 @@ async def get_telegram_channel_ids() -> List[int]:
             )
         )
         return [row[0] for row in result.all()]
+
+async def upsert_channel_membership(channel_id: int, user_id: int, status: str) -> None:
+    """chat_member yangilanishidan kelgan a'zolik holatini saqlaydi/yangilaydi
+    (katta kanallarda get_chat_member ishlamagani uchun shu orqali kuzatiladi)."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(ChannelMembership).where(
+                ChannelMembership.channel_id == channel_id,
+                ChannelMembership.user_id == user_id
+            )
+        )
+        membership = result.scalar_one_or_none()
+        if membership:
+            membership.status = status
+        else:
+            session.add(ChannelMembership(channel_id=channel_id, user_id=user_id, status=status))
+        await session.commit()
+
+async def get_channel_membership_status(channel_id: int, user_id: int) -> Optional[str]:
+    """Kuzatilgan (chat_member orqali) a'zolik holatini qaytaradi, agar hali
+    kuzatilmagan bo'lsa None (bu holda get_chat_member fallback ishlatiladi)."""
+    async with async_session() as session:
+        result = await session.execute(
+            select(ChannelMembership.status).where(
+                ChannelMembership.channel_id == channel_id,
+                ChannelMembership.user_id == user_id
+            )
+        )
+        return result.scalar_one_or_none()
 
 async def delete_channel(channel_pk_id: int) -> bool:
     """`Channel.id` (jadval ichidagi asosiy kalit) bo'yicha o'chiradi — Instagram
