@@ -64,12 +64,35 @@ def admin_channels_list_keyboard(channels: List[Channel]) -> InlineKeyboardMarku
     buttons.append([InlineKeyboardButton(text="⬅️ Admin panelga qaytish", callback_data="admin_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def channel_type_choice_keyboard() -> InlineKeyboardMarkup:
+def channel_category_choice_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📢 Telegram kanal (oddiy yoki so'rovli)", callback_data="channel_add_type:telegram")],
-            [InlineKeyboardButton(text="📸 Instagram / boshqa havola", callback_data="channel_add_type:other")],
+            [InlineKeyboardButton(text="📢 Kanal/guruh ulash", callback_data="channel_add_category:channel")],
+            [InlineKeyboardButton(text="🔗 Tashqi link (Instagram va h.k.)", callback_data="channel_add_category:other")],
             [InlineKeyboardButton(text="⬅️ Bekor qilish", callback_data="admin_channels")]
+        ]
+    )
+
+def channel_mode_choice_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔒 So'rovli (request) kanal/guruh", callback_data="channel_add_mode:request")],
+            [InlineKeyboardButton(text="🌐 Oddiy (ochiq) kanal", callback_data="channel_add_mode:open")],
+            [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="channel_add")]
+        ]
+    )
+
+def add_bot_admin_keyboard(bot_username: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(
+                text="📢 Kanalga admin qilib ulash",
+                url=f"https://t.me/{bot_username}?startchannel&admin=invite_users"
+            )],
+            [InlineKeyboardButton(
+                text="👥 Guruhga admin qilib ulash",
+                url=f"https://t.me/{bot_username}?startgroup&admin=invite_users"
+            )]
         ]
     )
 

@@ -6,7 +6,12 @@ from aiogram.fsm.context import FSMContext
 from data.config import ADMINS
 from database.crud import get_all_channels, add_channel, delete_channel
 from app.state.states import AdminChannelState
-from app.keyboards.inline.admin import admin_channels_list_keyboard, channel_type_choice_keyboard
+from app.keyboards.inline.admin import (
+    admin_channels_list_keyboard,
+    channel_category_choice_keyboard,
+    channel_mode_choice_keyboard,
+    add_bot_admin_keyboard
+)
 from app.keyboards.default.menu import cancel_keyboard, admin_menu_keyboard, main_menu_keyboard
 
 logger = logging.getLogger(__name__)
@@ -62,7 +67,7 @@ async def delete_channel_callback(call: CallbackQuery):
     )
     await call.answer("O'chirildi.")
 
-# Yangi kanal/havola qo'shish — avval turini tanlaymiz
+# Yangi kanal/havola qo'shish — avval kategoriyasini tanlaymiz
 @router.callback_query(F.data == "channel_add")
 async def start_add_channel(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
@@ -70,39 +75,61 @@ async def start_add_channel(call: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await call.message.edit_text(
-        text="➕ <b>Qanday turdagi majburiy havola qo'shmoqchisiz?</b>\n\n"
-             "📢 <b>Telegram kanal</b> — oddiy ochiq kanal bo'lsin yoki \"so'rov orqali qo'shilish\" "
-             "(join request) yoqilgan kanal bo'lsin — bot avtomatik tekshiradi va so'rovlarni o'zi tasdiqlaydi.\n\n"
-             "📸 <b>Instagram / boshqa havola</b> — faqat havola sifatida ko'rsatiladi, chunki bunday "
-             "joylarda a'zolikni bot orqali tekshirib bo'lmaydi (Instagram API bunga ruxsat bermaydi).",
-        reply_markup=channel_type_choice_keyboard()
+        text="➕ <b>Nima qo'shmoqchisiz?</b>\n\n"
+             "📢 <b>Kanal/guruh ulash</b> — bot a'zolikni tekshiradigan majburiy Telegram kanal yoki guruh.\n\n"
+             "🔗 <b>Tashqi link</b> — Instagram va shunga o'xshash, bot tekshira olmaydigan havolalar "
+             "(faqat ko'rsatiladi, a'zolik shart qilinmaydi).",
+        reply_markup=channel_category_choice_keyboard()
     )
     await call.answer()
 
-@router.callback_query(F.data == "channel_add_type:telegram")
+@router.callback_query(F.data == "channel_add_category:channel")
+async def choose_channel_mode(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+
+    await call.message.edit_text(
+        text="📢 <b>Qanday turdagi kanal/guruh qo'shmoqchisiz?</b>\n\n"
+             "🔒 <b>So'rovli (request)</b> — foydalanuvchi \"Request to Join\" bosadi, bot avtomatik "
+             "tasdiqlaydi. Katta (ko'p a'zoli) kanal/guruhlar uchun tavsiya etiladi.\n\n"
+             "🌐 <b>Oddiy (ochiq)</b> — foydalanuvchi to'g'ridan-to'g'ri, so'rovsiz a'zo bo'ladi.",
+        reply_markup=channel_mode_choice_keyboard()
+    )
+    await call.answer()
+
+@router.callback_query(F.data.startswith("channel_add_mode:"))
 async def start_add_telegram_channel(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return
 
+    link_mode = call.data.split(":")[1]  # "request" yoki "open"
+    await state.update_data(link_mode=link_mode)
     await state.set_state(AdminChannelState.waiting_for_channel_id)
     try:
         await call.message.delete()
     except Exception:
         pass
+
+    bot_me = await call.bot.get_me()
     await call.bot.send_message(
         chat_id=call.from_user.id,
-        text="📢 <b>Majburiy a'zolik uchun Telegram kanal qo'shish</b>\n\n"
-             "Kanalni qo'shish uchun quyidagi 2 usuldan birini tanlang:\n"
-             "1️⃣ Kanaldan istalgan bitta xabarni (postni) bu yerga <b>Forward</b> qiling.\n"
-             "2️⃣ Yoki kanal <b>ID</b>sini (masalan: <code>-1003880553725</code>) yoki <b>username</b>ini (<code>@kanal_nomi</code>) yozib yuboring.\n\n"
-             "<i>⚠️ Muhim: Bot kanalda administrator bo'lishi va \"Foydalanuvchi qo'shish\" (Add/Invite Users) "
-             "huquqiga ega bo'lishi shart — aks holda \"so'rov orqali qo'shilish\" yoqilgan kanallarda "
-             "so'rovlarni avtomatik tasdiqlab bera olmaydi.</i>",
+        text="🤖 <b>1-qadam: Botni admin qiling</b>\n\n"
+             "Pastdagi tugma orqali kanal/guruhingizni ro'yxatdan tanlasangiz, bot kerakli huquq "
+             "(\"Foydalanuvchi qo'shish\") bilan avtomatik admin bo'ladi — qo'lda sozlash shart emas.\n\n"
+             "<i>Agar botni allaqachon qo'lda admin qilib qo'ygan bo'lsangiz, bu qadamni o'tkazib yuborishingiz mumkin.</i>",
+        reply_markup=add_bot_admin_keyboard(bot_me.username)
+    )
+    await call.bot.send_message(
+        chat_id=call.from_user.id,
+        text="📢 <b>2-qadam: Kanal/guruhni bog'lash</b>\n\n"
+             "1️⃣ Kanal/guruhdan istalgan bitta xabarni bu yerga <b>Forward</b> qiling.\n"
+             "2️⃣ Yoki <b>ID</b>sini (masalan: <code>-1003880553725</code>) yoki <b>username</b>ini "
+             "(<code>@nomi</code>) yozib yuboring.",
         reply_markup=cancel_keyboard()
     )
     await call.answer()
 
-@router.callback_query(F.data == "channel_add_type:other")
+@router.callback_query(F.data == "channel_add_category:other")
 async def start_add_other_channel(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return
@@ -235,39 +262,68 @@ async def process_channel_input(message: Message, state: FSMContext):
     channel_id = chat.id
     channel_name = chat.title or "Kanal"
 
-    # Havolani (link) avtomatik olish — avval "so'rov orqali qo'shilish"
-    # (join request) havolasini yaratishga harakat qilamiz, shunda bot
-    # so'rovlarni avtomatik tasdiqlay oladi. Bunga huquq yetmasa
-    # (masalan bot "Foydalanuvchi qo'shish" huquqiga ega bo'lmasa),
-    # oddiy ochiq havolaga qaytamiz.
+    data = await state.get_data()
+    link_mode = data.get("link_mode", "request")
+
+    # "So'rovli" tanlangan bo'lsa — avval creates_join_request=True bilan
+    # maxsus havola yaratishga harakat qilamiz, shunda bot so'rovlarni
+    # avtomatik tasdiqlay oladi. Bunga huquq yetmasa (masalan bot hali
+    # "Foydalanuvchi qo'shish" huquqi bilan to'liq tan olinmagan bo'lsa),
+    # pastdagi oddiy havola zanjiriga tushamiz.
     invite_link = None
-    try:
-        created_link = await message.bot.create_chat_invite_link(
-            chat_id=channel_id,
-            name="Kodlikino Majburiy Obuna",
-            creates_join_request=True
-        )
-        invite_link = created_link.invite_link
-    except Exception as err:
-        logger.warning(f"So'rov orqali qo'shilish havolasi yaratilmadi: {err}")
+    got_request_link = False
+    if link_mode == "request":
+        try:
+            created_link = await message.bot.create_chat_invite_link(
+                chat_id=channel_id,
+                name="Kodlikino Majburiy Obuna",
+                creates_join_request=True
+            )
+            invite_link = created_link.invite_link
+            got_request_link = True
+        except Exception as err:
+            logger.warning(f"So'rov orqali qo'shilish havolasi yaratilmadi: {err}")
+
+    # "Oddiy" tanlangan bo'lsa yoki so'rovli havola yaratib bo'lmasa —
+    # mavjud ochiq havolalardan foydalanamiz, aks holda oddiy havola yaratamiz.
+    if not invite_link:
         if chat.username:
             invite_link = f"https://t.me/{chat.username}"
         elif chat.invite_link:
             invite_link = chat.invite_link
+        else:
+            try:
+                created_link = await message.bot.create_chat_invite_link(
+                    chat_id=channel_id,
+                    name="Kodlikino Majburiy Obuna"
+                )
+                invite_link = created_link.invite_link
+            except Exception as err:
+                logger.warning(f"Havola yaratilmadi: {err}")
 
-    # Agar havola baribir olinmasa, qo'lda so'raymiz (fallback)
+    # Havola baribir olinmasa, qo'lda so'raymiz (fallback)
     if not invite_link:
         await state.update_data(channel_id=channel_id, channel_name=channel_name)
         await state.set_state(AdminChannelState.waiting_for_invite_link)
         await message.answer(
             f"📢 Kanal: <b>{channel_name}</b> (<code>{channel_id}</code>)\n\n"
-            "⚠️ Kanal yopiq va botda taklif havolasi yaratish huquqi yetarli bo'lmadi.\n"
-            "Iltimos, ushbu kanal uchun taklif havolasini (link) yuboring:\n<i>(Masalan: https://t.me/+AbCdEf...)</i>",
+            "⚠️ Bot ushbu kanal/guruh uchun havola yarata olmadi — huquqlar yetarli emas.\n"
+            "Iltimos, ushbu kanal/guruh uchun taklif havolasini (link) yuboring:\n<i>(Masalan: https://t.me/+AbCdEf...)</i>",
             reply_markup=cancel_keyboard()
         )
         return
 
-    await ask_for_channel_name(message, state, channel_id, channel_name, invite_link)
+    warning = None
+    if link_mode == "request" and not got_request_link:
+        warning = (
+            "⚠️ <b>Diqqat:</b> so'rovli (request) havola yaratib bo'lmadi — bot hali "
+            "\"Foydalanuvchi qo'shish\" huquqi bilan to'liq tan olinmagan bo'lishi mumkin. "
+            "Hozircha oddiy (so'rovsiz) havola ishlatildi. Botni adminlikdan olib tashlab, "
+            "qaytadan (\"Foydalanuvchi qo'shish\" huquqi bilan) admin qilib, kanalni qaytadan "
+            "qo'shib ko'ring."
+        )
+
+    await ask_for_channel_name(message, state, channel_id, channel_name, invite_link, warning)
 
 @router.message(AdminChannelState.waiting_for_invite_link, F.text)
 async def process_invite_link(message: Message, state: FSMContext):
@@ -294,10 +350,12 @@ async def process_invite_link(message: Message, state: FSMContext):
     await ask_for_channel_name(message, state, channel_id, channel_name, link)
 
 
-async def ask_for_channel_name(message: Message, state: FSMContext, channel_id: int, default_name: str, invite_link: str):
+async def ask_for_channel_name(message: Message, state: FSMContext, channel_id: int, default_name: str, invite_link: str, warning: str = None):
     """Kanal aniqlangach, admindan nomni tasdiqlashni yoki o'zgartirishni so'raydi."""
     await state.update_data(channel_id=channel_id, channel_name=default_name, invite_link=invite_link)
     await state.set_state(AdminChannelState.waiting_for_channel_name)
+    if warning:
+        await message.answer(text=warning)
     await message.answer(
         text=f"📝 <b>Kanal nomini tasdiqlang</b>\n\n"
              f"Standart nom: <b>{default_name}</b>\n\n"
