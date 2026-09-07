@@ -267,17 +267,7 @@ async def process_channel_input(message: Message, state: FSMContext):
         )
         return
 
-    # Barchasi tayyor, bazaga saqlaymiz!
-    await add_channel(channel_id=channel_id, name=channel_name, invite_link=invite_link)
-    await state.clear()
-
-    await message.answer(
-        text=f"✅ <b>Kanal muvaffaqiyatli qo'shildi!</b>\n\n"
-             f"📢 <b>Nomi:</b> {channel_name}\n"
-             f"🆔 <b>ID:</b> <code>{channel_id}</code>\n"
-             f"🔗 <b>Havola:</b> {invite_link}",
-        reply_markup=admin_menu_keyboard()
-    )
+    await ask_for_channel_name(message, state, channel_id, channel_name, invite_link)
 
 @router.message(AdminChannelState.waiting_for_invite_link, F.text)
 async def process_invite_link(message: Message, state: FSMContext):
@@ -301,13 +291,50 @@ async def process_invite_link(message: Message, state: FSMContext):
     channel_id = data.get("channel_id")
     channel_name = data.get("channel_name")
 
-    await add_channel(channel_id=channel_id, name=channel_name, invite_link=link)
+    await ask_for_channel_name(message, state, channel_id, channel_name, link)
+
+
+async def ask_for_channel_name(message: Message, state: FSMContext, channel_id: int, default_name: str, invite_link: str):
+    """Kanal aniqlangach, admindan nomni tasdiqlashni yoki o'zgartirishni so'raydi."""
+    await state.update_data(channel_id=channel_id, channel_name=default_name, invite_link=invite_link)
+    await state.set_state(AdminChannelState.waiting_for_channel_name)
+    await message.answer(
+        text=f"📝 <b>Kanal nomini tasdiqlang</b>\n\n"
+             f"Standart nom: <b>{default_name}</b>\n\n"
+             f"Boshqa nom bilan ko'rsatmoqchi bo'lsangiz — o'sha nomni yozib yuboring.\n"
+             f"Standart nom bilan qoldirish uchun <code>-</code> yuboring:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminChannelState.waiting_for_channel_name, F.text)
+async def process_channel_name(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    if message.text in ["❌ Bekor qilish", "🔙 Asosiy menyu"]:
+        await state.clear()
+        if message.text == "🔙 Asosiy menyu":
+            await message.answer("🏠 Asosiy menyuga qaytdingiz.", reply_markup=main_menu_keyboard(is_admin=True))
+        else:
+            await message.answer("❌ Kanal qo'shish bekor qilindi.", reply_markup=admin_menu_keyboard())
+        return
+
+    data = await state.get_data()
+    channel_id = data.get("channel_id")
+    invite_link = data.get("invite_link")
+    default_name = data.get("channel_name")
+
+    typed = message.text.strip()
+    channel_name = default_name if typed == "-" else typed
+
+    await add_channel(channel_id=channel_id, name=channel_name, invite_link=invite_link)
     await state.clear()
 
     await message.answer(
         text=f"✅ <b>Kanal muvaffaqiyatli qo'shildi!</b>\n\n"
              f"📢 <b>Nomi:</b> {channel_name}\n"
              f"🆔 <b>ID:</b> <code>{channel_id}</code>\n"
-             f"🔗 <b>Havola:</b> {link}",
+             f"🔗 <b>Havola:</b> {invite_link}",
         reply_markup=admin_menu_keyboard()
     )
