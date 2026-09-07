@@ -5,12 +5,14 @@ from .subscription import router as subscription_router
 from .profile import router as profile_router
 from .premium import router as premium_router
 from .search import router as search_router
+from .join_request import router as join_request_router
 
 def setup(dp: Dispatcher):
     """
     Foydalanuvchi routerlarini tartib bo'yicha ulash
     """
     dp.include_routers(
+        join_request_router,
         start_router,
         help_router,
         subscription_router,

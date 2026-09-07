@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from data.config import ADMINS
 from database.crud import get_all_channels, add_channel, delete_channel
 from app.state.states import AdminChannelState
-from app.keyboards.inline.admin import admin_channels_list_keyboard
+from app.keyboards.inline.admin import admin_channels_list_keyboard, channel_type_choice_keyboard
 from app.keyboards.default.menu import cancel_keyboard, admin_menu_keyboard, main_menu_keyboard
 
 logger = logging.getLogger(__name__)
@@ -52,19 +52,35 @@ async def delete_channel_callback(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
 
-    channel_id = int(call.data.split(":")[1])
-    await delete_channel(channel_id)
+    channel_pk_id = int(call.data.split(":")[1])
+    await delete_channel(channel_pk_id)
 
     channels = await get_all_channels()
     await call.message.edit_text(
-        text="🗑 Kanal majburiy ro'yxatdan o'chirildi.\n\n📢 <b>Majburiy kanallar:</b>",
+        text="🗑 Yozuv majburiy ro'yxatdan o'chirildi.\n\n📢 <b>Majburiy kanallar:</b>",
         reply_markup=admin_channels_list_keyboard(channels)
     )
-    await call.answer("Kanal o'chirildi.")
+    await call.answer("O'chirildi.")
 
-# Yangi kanal qo'shish
+# Yangi kanal/havola qo'shish — avval turini tanlaymiz
 @router.callback_query(F.data == "channel_add")
 async def start_add_channel(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+
+    await state.clear()
+    await call.message.edit_text(
+        text="➕ <b>Qanday turdagi majburiy havola qo'shmoqchisiz?</b>\n\n"
+             "📢 <b>Telegram kanal</b> — oddiy ochiq kanal bo'lsin yoki \"so'rov orqali qo'shilish\" "
+             "(join request) yoqilgan kanal bo'lsin — bot avtomatik tekshiradi va so'rovlarni o'zi tasdiqlaydi.\n\n"
+             "📸 <b>Instagram / boshqa havola</b> — faqat havola sifatida ko'rsatiladi, chunki bunday "
+             "joylarda a'zolikni bot orqali tekshirib bo'lmaydi (Instagram API bunga ruxsat bermaydi).",
+        reply_markup=channel_type_choice_keyboard()
+    )
+    await call.answer()
+
+@router.callback_query(F.data == "channel_add_type:telegram")
+async def start_add_telegram_channel(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return
 
@@ -75,14 +91,85 @@ async def start_add_channel(call: CallbackQuery, state: FSMContext):
         pass
     await call.bot.send_message(
         chat_id=call.from_user.id,
-        text="📢 <b>Majburiy a'zolik uchun kanal qo'shish</b>\n\n"
+        text="📢 <b>Majburiy a'zolik uchun Telegram kanal qo'shish</b>\n\n"
              "Kanalni qo'shish uchun quyidagi 2 usuldan birini tanlang:\n"
              "1️⃣ Kanaldan istalgan bitta xabarni (postni) bu yerga <b>Forward</b> qiling.\n"
              "2️⃣ Yoki kanal <b>ID</b>sini (masalan: <code>-1003880553725</code>) yoki <b>username</b>ini (<code>@kanal_nomi</code>) yozib yuboring.\n\n"
-             "<i>⚠️ Muhim: Bot kanalda administrator bo'lishi shart!</i>",
+             "<i>⚠️ Muhim: Bot kanalda administrator bo'lishi va \"Foydalanuvchi qo'shish\" (Add/Invite Users) "
+             "huquqiga ega bo'lishi shart — aks holda \"so'rov orqali qo'shilish\" yoqilgan kanallarda "
+             "so'rovlarni avtomatik tasdiqlab bera olmaydi.</i>",
         reply_markup=cancel_keyboard()
     )
     await call.answer()
+
+@router.callback_query(F.data == "channel_add_type:other")
+async def start_add_other_channel(call: CallbackQuery, state: FSMContext):
+    if not is_admin(call.from_user.id):
+        return
+
+    await state.set_state(AdminChannelState.waiting_for_other_name)
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+    await call.bot.send_message(
+        chat_id=call.from_user.id,
+        text="📸 <b>Instagram / boshqa havola qo'shish</b>\n\n"
+             "Havola qanday nom bilan ko'rsatilsin? (masalan: <code>Instagram sahifamiz</code>):",
+        reply_markup=cancel_keyboard()
+    )
+    await call.answer()
+
+@router.message(AdminChannelState.waiting_for_other_name, F.text)
+async def process_other_name(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    if message.text in ["❌ Bekor qilish", "🔙 Asosiy menyu"]:
+        await state.clear()
+        if message.text == "🔙 Asosiy menyu":
+            await message.answer("🏠 Asosiy menyuga qaytdingiz.", reply_markup=main_menu_keyboard(is_admin=True))
+        else:
+            await message.answer("❌ Bekor qilindi.", reply_markup=admin_menu_keyboard())
+        return
+
+    await state.update_data(other_name=message.text.strip())
+    await state.set_state(AdminChannelState.waiting_for_other_link)
+    await message.answer(
+        "🔗 Endi havolaning o'zini yuboring (masalan: <code>https://instagram.com/kodlikino</code>):"
+    )
+
+@router.message(AdminChannelState.waiting_for_other_link, F.text)
+async def process_other_link(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+
+    if message.text in ["❌ Bekor qilish", "🔙 Asosiy menyu"]:
+        await state.clear()
+        if message.text == "🔙 Asosiy menyu":
+            await message.answer("🏠 Asosiy menyuga qaytdingiz.", reply_markup=main_menu_keyboard(is_admin=True))
+        else:
+            await message.answer("❌ Bekor qilindi.", reply_markup=admin_menu_keyboard())
+        return
+
+    link = message.text.strip()
+    if not link.startswith("http"):
+        await message.answer("⚠️ Iltimos, to'liq havolani kiriting (masalan: https://instagram.com/...):")
+        return
+
+    data = await state.get_data()
+    name = data.get("other_name", "Havola")
+    await add_channel(name=name, invite_link=link, channel_id=None, channel_type="other")
+    await state.clear()
+
+    await message.answer(
+        text=f"✅ <b>Havola muvaffaqiyatli qo'shildi!</b>\n\n"
+             f"📸 <b>Nomi:</b> {name}\n"
+             f"🔗 <b>Havola:</b> {link}\n\n"
+             f"<i>Eslatma: bu turdagi havolalar uchun bot a'zolikni tekshira olmaydi, "
+             f"foydalanuvchiga faqat ko'rsatib qo'yiladi.</i>",
+        reply_markup=admin_menu_keyboard()
+    )
 
 @router.message(AdminChannelState.waiting_for_channel_id)
 async def process_channel_input(message: Message, state: FSMContext):

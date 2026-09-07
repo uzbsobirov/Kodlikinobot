@@ -55,13 +55,23 @@ def admin_card_action_keyboard(card_id: int, is_active: bool) -> InlineKeyboardM
 def admin_channels_list_keyboard(channels: List[Channel]) -> InlineKeyboardMarkup:
     buttons = []
     for ch in channels:
+        icon = "📢" if ch.channel_type == "telegram" else "📸"
         buttons.append([
-            InlineKeyboardButton(text=f"📢 {ch.name}", url=ch.invite_link),
-            InlineKeyboardButton(text="❌ O'chirish", callback_data=f"channel_del:{ch.channel_id}")
+            InlineKeyboardButton(text=f"{icon} {ch.name}", url=ch.invite_link),
+            InlineKeyboardButton(text="❌ O'chirish", callback_data=f"channel_del:{ch.id}")
         ])
-    buttons.append([InlineKeyboardButton(text="➕ Yangi kanal qo'shish", callback_data="channel_add")])
+    buttons.append([InlineKeyboardButton(text="➕ Yangi kanal/havola qo'shish", callback_data="channel_add")])
     buttons.append([InlineKeyboardButton(text="⬅️ Admin panelga qaytish", callback_data="admin_back")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def channel_type_choice_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📢 Telegram kanal (oddiy yoki so'rovli)", callback_data="channel_add_type:telegram")],
+            [InlineKeyboardButton(text="📸 Instagram / boshqa havola", callback_data="channel_add_type:other")],
+            [InlineKeyboardButton(text="⬅️ Bekor qilish", callback_data="admin_channels")]
+        ]
+    )
 
 def broadcast_confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(

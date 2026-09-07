@@ -25,8 +25,15 @@ async def check_user_subscriptions(bot: Bot, user_id: int) -> tuple[bool, list]:
         return True, []
 
     unsubscribed_channels = []
+    # Instagram va h.k. — bot orqali tekshirib bo'lmaydi, shuning uchun
+    # bloklashda ishtirok etmaydi, lekin foydalanuvchiga har doim ko'rsatiladi.
+    unverifiable_channels = []
 
     for channel in channels:
+        if channel.channel_type != "telegram":
+            unverifiable_channels.append(channel)
+            continue
+
         try:
             member = await bot.get_chat_member(chat_id=channel.channel_id, user_id=user_id)
             if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED]:
@@ -37,7 +44,8 @@ async def check_user_subscriptions(bot: Bot, user_id: int) -> tuple[bool, list]:
             continue
 
     if unsubscribed_channels:
-        return False, unsubscribed_channels
+        # Instagram kabi havolalarni ham shu ekranda birga ko'rsatamiz
+        return False, unsubscribed_channels + unverifiable_channels
     return True, []
 
 

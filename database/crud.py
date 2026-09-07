@@ -298,19 +298,30 @@ async def delete_card(card_id: int) -> bool:
 
 # ==================== CHANNELS ====================
 
-async def add_channel(channel_id: int, name: str, invite_link: str) -> Channel:
+async def add_channel(
+    name: str,
+    invite_link: str,
+    channel_id: Optional[int] = None,
+    channel_type: str = "telegram"
+) -> Channel:
     async with async_session() as session:
-        # mavjud bo'lsa yangilash
-        result = await session.execute(select(Channel).where(Channel.channel_id == channel_id))
-        channel = result.scalar_one_or_none()
+        channel = None
+        # Telegram kanallarda channel_id orqali "mavjud bo'lsa yangilash" mantig'i ishlaydi.
+        # Instagram/boshqa turdagi yozuvlarda channel_id yo'q (None) — har doim yangi qator qo'shiladi.
+        if channel_id is not None:
+            result = await session.execute(select(Channel).where(Channel.channel_id == channel_id))
+            channel = result.scalar_one_or_none()
+
         if channel:
             channel.name = name
             channel.invite_link = invite_link
+            channel.channel_type = channel_type
         else:
             channel = Channel(
                 channel_id=channel_id,
                 name=name,
-                invite_link=invite_link
+                invite_link=invite_link,
+                channel_type=channel_type
             )
             session.add(channel)
         await session.commit()
@@ -322,9 +333,23 @@ async def get_all_channels() -> List[Channel]:
         result = await session.execute(select(Channel).order_by(Channel.id.asc()))
         return list(result.scalars().all())
 
-async def delete_channel(channel_id: int) -> bool:
+async def get_telegram_channel_ids() -> List[int]:
+    """Faqat haqiqiy Telegram kanallarining chat ID'lari (join-request'larni
+    avtomatik tasdiqlash uchun — Instagram va h.k. bunga kirmaydi)."""
     async with async_session() as session:
-        result = await session.execute(delete(Channel).where(Channel.channel_id == channel_id))
+        result = await session.execute(
+            select(Channel.channel_id).where(
+                Channel.channel_type == "telegram",
+                Channel.channel_id.is_not(None)
+            )
+        )
+        return [row[0] for row in result.all()]
+
+async def delete_channel(channel_pk_id: int) -> bool:
+    """`Channel.id` (jadval ichidagi asosiy kalit) bo'yicha o'chiradi — Instagram
+    kabi yozuvlarda `channel_id` bo'lmasligi mumkinligi uchun shu usul ishlatiladi."""
+    async with async_session() as session:
+        result = await session.execute(delete(Channel).where(Channel.id == channel_pk_id))
         await session.commit()
         return result.rowcount > 0
 

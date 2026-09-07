@@ -84,12 +84,17 @@ class Channel(Base):
     __tablename__ = "channels"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    channel_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
+    # Instagram va boshqa (tekshirib bo'lmaydigan) havolalarda haqiqiy Telegram
+    # chat ID bo'lmaydi, shuning uchun bu maydon endi ixtiyoriy (Optional).
+    channel_id: Mapped[Optional[int]] = mapped_column(BigInteger, unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     invite_link: Mapped[str] = mapped_column(String(255), nullable=False)
+    # "telegram" — get_chat_member orqali haqiqiy a'zolik tekshiriladi (majburiy)
+    # "other"    — Instagram va shu kabi havolalar, tekshirib bo'lmaydi, faqat ko'rsatiladi
+    channel_type: Mapped[str] = mapped_column(String(32), default="telegram", nullable=False)
 
     def __repr__(self) -> str:
-        return f"<Channel id={self.id} channel_id={self.channel_id} name={self.name}>"
+        return f"<Channel id={self.id} channel_id={self.channel_id} name={self.name} type={self.channel_type}>"
 
 
 class Setting(Base):

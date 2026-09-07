@@ -32,6 +32,9 @@ class AdminChannelState(StatesGroup):
     waiting_for_channel_id = State()
     waiting_for_channel_name = State()
     waiting_for_invite_link = State()
+    # Instagram / boshqa (tekshirib bo'lmaydigan) havolalar uchun
+    waiting_for_other_name = State()
+    waiting_for_other_link = State()
 
 class AdminPriceState(StatesGroup):
     waiting_for_price = State()
